@@ -1,0 +1,69 @@
+name: upstream-drift-report
+
+# Daily drift report comparing kengwei/gbrain master against
+# garrytan/gbrain master. When upstream advances, opens (or comments
+# on) a tracking issue summarizing the new commits.
+
+on:
+  schedule:
+    - cron: '0 13 * * *'  # Daily 13:00 UTC
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add upstream remote and fetch
+        run: |
+          git remote add upstream https://github.com/garrytan/gbrain.git
+          git fetch upstream master --quiet
+
+      - name: Compute drift
+        id: drift
+        run: |
+          AHEAD=$(git rev-list --count master..upstream/master)
+          BEHIND=$(git rev-list --count upstream/master..master)
+          echo "ahead=$AHEAD" >> "$GITHUB_OUTPUT"
+          echo "behind=$BEHIND" >> "$GITHUB_OUTPUT"
+          git log master..upstream/master --oneline | head -50 > /tmp/drift.txt || true
+          echo "Upstream is $AHEAD ahead, fork is $BEHIND ahead."
+
+      - name: Update or create drift issue
+        if: steps.drift.outputs.ahead != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AHEAD: ${{ steps.drift.outputs.ahead }}
+          BEHIND: ${{ steps.drift.outputs.behind }}
+        run: |
+          set -eu
+          {
+            echo "Upstream \`garrytan/gbrain\` master has **$AHEAD** commits not in our master."
+            echo "Our master has **$BEHIND** commits not upstream (intentional local patches)."
+            echo ""
+            echo "Recent upstream commits not yet merged:"
+            echo ""
+            echo '```'
+            cat /tmp/drift.txt
+            echo '```'
+            echo ""
+            echo "_Workflow: \`.github/workflows/upstream-drift.yml\`. Updated $(date -u +%FT%TZ)._"
+          } > /tmp/body.md
+
+          ISSUE=$(gh issue list --search "Upstream drift in:title state:open" --json number -q '.[0].number' || echo "")
+          if [ -n "$ISSUE" ]; then
+            echo "Updating existing issue #$ISSUE"
+            gh issue comment "$ISSUE" --body-file /tmp/body.md
+          else
+            echo "Creating new drift issue"
+            gh issue create \
+              --title "Upstream drift: $AHEAD ahead, $BEHIND behind" \
+              --body-file /tmp/body.md
+          fi

@@ -1,0 +1,57 @@
+name: upstream-pr-257-watcher
+
+# Watches garrytan/gbrain PR #257 (v0.17 pluggable embedding providers).
+# Per ~/.gbrain/CLAUDE.md, the local-patches branch is "kept local until
+# that ships." When PR #257 merges, this opens an issue here so the
+# sunset checklist gets executed.
+
+on:
+  schedule:
+    - cron: '0 12 * * 0'  # Sunday 12:00 UTC
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR #257 state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          STATE=$(gh pr view 257 --repo garrytan/gbrain --json state -q '.state')
+          MERGED_AT=$(gh pr view 257 --repo garrytan/gbrain --json mergedAt -q '.mergedAt')
+          echo "PR #257 state: $STATE (merged: $MERGED_AT)"
+
+          if [ "$STATE" != "MERGED" ]; then
+            echo "Not yet merged; nothing to do."
+            exit 0
+          fi
+
+          EXISTING=$(gh issue list --search "sunset local-patches in:title state:open" --json number -q '.[0].number' || echo "")
+          if [ -n "$EXISTING" ]; then
+            echo "Sunset issue already exists: #$EXISTING"
+            exit 0
+          fi
+
+          cat > /tmp/issue-body.md <<EOF
+          garrytan/gbrain PR #257 (v0.17 pluggable embedding providers) merged on **$MERGED_AT**.
+
+          Per \`~/.gbrain/CLAUDE.md\`, the \`kengwei/local-patches\` branch is "kept local until that ships." Sunset checklist:
+
+          - [ ] Fetch and merge (or rebase onto) upstream master
+          - [ ] Verify v0.17 covers the Ollama embedding + redaction features that \`kengwei/local-patches\` provided
+          - [ ] Smoke-test runtime: \`gbrain config show\` redacts secrets; \`gbrain\` ingest still uses Ollama embeddings
+          - [ ] Delete \`kengwei/local-patches\` branch (local + remote)
+          - [ ] Update \`~/.gbrain/CLAUDE.md\` to remove the local-patches reference
+
+          Upstream PR: https://github.com/garrytan/gbrain/pull/257
+          EOF
+
+          gh issue create \
+            --title "Sunset local-patches per CLAUDE.md plan (upstream PR #257 merged)" \
+            --body-file /tmp/issue-body.md

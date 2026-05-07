@@ -40,11 +40,17 @@ export type LinkResolutionType = 'qualified' | 'unqualified';
 /**
  * Directory prefix whitelist. These are the top-level slug dirs the extractor
  * recognizes as entity references. Upstream canonical + our extensions:
- *   - Gbrain canonical: people, companies, meetings, concepts, deal, civic, project, source, media, yc, projects
+ *   - Gbrain canonical: people, companies, meetings, concepts, deal, civic, project, source, sources, media, yc, projects
  *   - Our domain extensions: tech, finance, personal, openclaw (domain-organized wikis)
  *   - Our entity prefix: entities (we kept some legacy entities/projects/ pages)
+ *
+ * Note: `sources` (plural) is the directory namespace for `sources/<slug>` pages,
+ * distinct from the `source:` qualifier in qualified wikilinks like `[[source-id:dir/slug]]`.
+ * Upstream has `source` (singular) but lacks `sources` (plural); a large fraction of
+ * kengwei's brain lives under sources/* and was silently unreachable via wikilinks
+ * before this addition. Carried forward from local commit 0c5d8d2.
  */
-const DIR_PATTERN = '(?:people|companies|meetings|concepts|deal|civic|project|projects|source|media|yc|tech|finance|personal|openclaw|entities)';
+const DIR_PATTERN = '(?:people|companies|meetings|concepts|deal|civic|project|projects|source|sources|media|yc|tech|finance|personal|openclaw|entities)';
 
 /**
  * Match `[Name](path)` markdown links pointing to entity directories.
